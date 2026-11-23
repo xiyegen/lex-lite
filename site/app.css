@@ -184,3 +184,12 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 
 /* 参照が指している項・号 */
 .hit { background: var(--flash); box-shadow: -8px 0 0 var(--flash), 8px 0 0 var(--flash); }
+
+/* 一覧に表示する法令の選択 */
+.grp.pk { display: flex; align-items: center; justify-content: space-between; margin: 18px 0 2px; }
+.grp.pk button { color: var(--accent); font-size: 13px; font-weight: 600; padding: 6px 0 6px 12px; }
+.prow { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 16px; line-height: 1.4; color: var(--sub); }
+.prow i { flex: none; width: 1.2em; font-style: normal; font-weight: 700; color: transparent; }
+.prow.on { color: var(--fg); }
+.prow.on i { color: var(--accent); }
+#hidden-note { display: block; width: 100%; text-align: left; margin-top: 20px; padding: 6px 0; color: var(--accent); font-size: 13px; }

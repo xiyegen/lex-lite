@@ -36,7 +36,7 @@ const stacks = new Map(); // 法令ごとの「戻る／進む」
 const metaOf = (id) => index.groups.flatMap((g) => g.laws).find((l) => l.id === id);
 
 /* ---------- 設定 ---------- */
-const prefs = Object.assign({ fs: 17, font: 'gothic', dim: '0', theme: 'auto' }, store.get('prefs', {}));
+const prefs = Object.assign({ fs: 17, font: 'gothic', dim: '0', theme: 'auto', hidden: [] }, store.get('prefs', {}));
 function applyPrefs() {
   document.documentElement.style.setProperty('--fs', prefs.fs + 'px');
   document.body.dataset.font = prefs.font;
@@ -159,17 +159,22 @@ function renderHome() {
   const q = $('#filter').value.trim();
   let html = '';
   for (const g of index.groups) {
-    const ls = g.laws.filter((l) => !q || l.title.includes(q));
+    // 非表示にした法令は一覧に出さない。名前で絞り込んだときだけは全法令から探す。
+    const ls = g.laws.filter((l) => (q ? l.title.includes(q) : !prefs.hidden.includes(l.id)));
     if (!ls.length) continue;
     html += `<div class="grp">${esc(g.name)}</div>`;
     for (const l of ls) {
       html += `<button class="lawrow" data-id="${l.id}"><span>${esc(l.title)}</span></button>`;
     }
   }
+  const total = index.groups.reduce((n, g) => n + g.laws.length, 0);
+  const off = prefs.hidden.filter((id) => metaOf(id)).length;
+  if (!q && off) html += `<button id="hidden-note">${off === total ? 'すべての法令を非表示にしています' : `ほか ${off} 法令を非表示にしています`}（変更）</button>`;
   $('#lawlist').innerHTML = html || '<div class="empty">該当する法令がありません</div>';
 }
 $('#filter').oninput = renderHome;
 $('#lawlist').onclick = (e) => {
+  if (e.target.closest('#hidden-note')) return openPicker();
   const b = e.target.closest('.lawrow');
   if (!b) return;
   const t = tabs.find((x) => x.id === b.dataset.id);
@@ -182,6 +187,43 @@ function setFoot(offline, ver) {
     `出典: e-Gov法令検索（デジタル庁）のデータを加工して作成。<br>データ更新日 <b>${index.built}</b>。改正法の附則と別表は収録していません。<br>` +
     (offline ? `<b>オフライン利用可</b>（全法令を端末に保存済み）<br>アプリの版 ${ver}` : 'オフライン用データを保存中…');
 }
+
+/* ---------- 一覧に表示する法令を選ぶ ---------- */
+// 保存するのは「非表示にした法令」のほう。あとから収録に加わった法令は最初から表示される。
+function drawPicker() {
+  $('#laws-pick').innerHTML = index.groups
+    .map((g, gi) => {
+      const allOn = g.laws.every((l) => !prefs.hidden.includes(l.id));
+      return (
+        `<div class="grp pk"><span>${esc(g.name)}</span><button data-g="${gi}">${allOn ? 'すべて隠す' : 'すべて表示'}</button></div>` +
+        g.laws.map((l) => `<button class="prow${prefs.hidden.includes(l.id) ? '' : ' on'}" data-id="${l.id}"><i>✓</i><span>${esc(l.title)}</span></button>`).join('')
+      );
+    })
+    .join('');
+}
+function openPicker() {
+  drawPicker();
+  sheet('#sheet-laws');
+  $('#laws-pick').scrollTop = 0;
+}
+$('#pick-laws').onclick = openPicker;
+$('#laws-pick').onclick = (e) => {
+  const g = e.target.closest('[data-g]');
+  const row = e.target.closest('.prow');
+  if (!g && !row) return;
+  const hidden = new Set(prefs.hidden);
+  if (g) {
+    const ids = index.groups[g.dataset.g].laws.map((l) => l.id);
+    const allOn = ids.every((id) => !hidden.has(id));
+    ids.forEach((id) => (allOn ? hidden.add(id) : hidden.delete(id)));
+  } else if (!hidden.delete(row.dataset.id)) hidden.add(row.dataset.id);
+  prefs.hidden = [...hidden];
+  store.set('prefs', prefs);
+  const y = $('#laws-pick').scrollTop;
+  drawPicker();
+  $('#laws-pick').scrollTop = y;
+  if (!cur) renderHome();
+};
 
 /* ---------- タブ（開いている法令。1法令につき1つ） ---------- */
 let tabs = store.get('tabs', []); // [{ id, rev }]  rev は旧版を表示しているときだけ
