@@ -27,7 +27,8 @@ const LOCAL_ALIAS = { 会社法施行規則: { 法: '会社法' }, 会社計算�
 let ctx = null; // いま変換中の条の文脈。null のあいだは参照をリンクにしない（附則など）
 
 const KN = '[〇一二三四五六七八九十百千]+';
-const REF = new RegExp(`(第${KN}条(?:[のノ]${KN})*|前条|次条|同条|前[二三四五六七八九十]条)((?:第${KN}項)?(?:第${KN}号)?)`, 'g');
+// 1: 条の部分  3: 項  4: 号  5: 号の枝番（「第三号の二」）
+const REF = new RegExp(`(第${KN}条(?:[のノ]${KN})*|前条|次条|同条|前[二三四五六七八九十]条)((?:第(${KN})項)?(?:第(${KN})号((?:[のノ]${KN})*))?)`, 'g');
 // 2つの参照のあいだがこれだけなら、同じ法令の条が続いているとみなす（「第九十二条第九項及び第十項、第九十四条」）
 const CONNECT = new RegExp(`^(?:まで|、|，|及び|又は|並びに|若しくは|から|第${KN}[項号編章節款目]|ただし書|本文|前段|後段|各号|[イロハニホヘトチリヌ])+$`);
 // 法令名らしい語の終わり（「同法」が何を指すかを探すのに使う）
@@ -143,7 +144,14 @@ function findRefs(s) {
     ctx.last = attr;
     prevEnd = end;
     prevLaw = law;
-    if (attr) out.push({ start, end, attr });
+    if (!attr) continue;
+    // 項・号まで指している参照は、小窓でそこに色を付けるための目印を持たせる（"p2" "p1i3" "i1"）
+    let h = '';
+    if (!attr.includes(',')) {
+      if (m[3]) h += 'p' + kan(m[3]);
+      if (m[4]) h += 'i' + [m[4], ...m[5].split(/[のノ]/).filter(Boolean)].map(kan).join('_');
+    }
+    out.push({ start, end, attr, h });
   }
   return out;
 }
@@ -163,7 +171,7 @@ function txt(s, paren) {
   let out = '';
   let ri = 0;
   for (let i = 0; i < s.length; i++) {
-    if (ri < refs.length && refs[ri].start === i) out += `<a data-r="${refs[ri].attr}">`;
+    if (ri < refs.length && refs[ri].start === i) out += `<a data-r="${refs[ri].attr}"${refs[ri].h ? ` data-h="${refs[ri].h}"` : ''}>`;
     const ch = s[i];
     if (bal && ch === '（') out += '<span class="pr">（';
     else if (bal && ch === '）') out += '）</span>';
@@ -232,7 +240,10 @@ function unit(n, lead) {
   const head = lead || (title ? `<span class="n">${title}</span>` : '');
   const d = depthOf(n.tag);
   const body = head ? `${head}　${sent}` : sent;
-  return `${cap}<div class="u d${d}${head ? '' : ' nh'}">${body}</div>${rest}`;
+  // 項・号の番号。参照先の項や号に色を付けるのに使う
+  const num = /^[\d_]+$/.test((n.attr && n.attr.Num) || '') ? n.attr.Num : '';
+  const mark = !num ? '' : n.tag === 'Paragraph' ? ` data-p="${num}"` : n.tag === 'Item' ? ` data-i="${num}"` : '';
+  return `${cap}<div class="u d${d}${head ? '' : ' nh'}"${mark}>${body}</div>${rest}`;
 }
 
 function block(n) {

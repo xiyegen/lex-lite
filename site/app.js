@@ -512,7 +512,38 @@ function parseRef(r, base) {
   if (i > 0 && !/^[\d_]+$/.test(r.slice(0, i))) return { lawId: r.slice(0, i), keys: [r.slice(i + 1)] };
   return { lawId: base.id, keys: r.split(',') };
 }
-async function openRef(r, base, push) {
+// 条の中で、指定された項・号（"p2" "p1i3" "i1"）にあたる要素を返す。号が見つからなければ項全体。
+function hitEls(sec, h) {
+  const m = /^(?:p(\d+))?(?:i([\d_]+))?$/.exec(h || '');
+  if (!sec || !m || !h) return [];
+  let els = [...sec.children];
+  if (m[1]) {
+    const s = els.findIndex((e) => e.dataset.p === m[1]);
+    if (s < 0) return [];
+    const e = els.findIndex((x, i) => i > s && x.dataset.p);
+    els = els.slice(s, e < 0 ? undefined : e);
+  }
+  if (m[2]) {
+    const s = els.findIndex((e) => e.dataset.i === m[2]);
+    if (s < 0) return m[1] ? els : [];
+    const e = els.findIndex((x, i) => i > s && (x.dataset.i || x.dataset.p));
+    els = els.slice(s, e < 0 ? undefined : e);
+  }
+  return els;
+}
+// 本文側: 移動した先の項・号をしばらく光らせる
+let pendingHit = null; // 他の法令へ移動するとき、開いたあとで光らせる項・号
+function flashHit(n, h) {
+  const els = hitEls(document.getElementById('a-' + n), h);
+  if (!els.length) return;
+  els.forEach((e) => e.classList.add('hit'));
+  const line = $('#hd').offsetHeight;
+  const r = els[0].getBoundingClientRect();
+  if (r.top > innerHeight * 0.6) scrollBy(0, r.top - line - 80);
+  setTimeout(() => els.forEach((e) => e.classList.remove('hit')), 2600);
+}
+
+async function openRef(r, base, push, h) {
   const { lawId, keys } = parseRef(r, base);
   let law = base;
   if (lawId !== base.id) {
@@ -528,9 +559,9 @@ async function openRef(r, base, push) {
   if (!ks.length) return toast('該当する条がありません');
   if (push && refView) refStack.push(refView);
   else refStack.length = 0;
-  refView = { law, keys: ks };
-  drawRef();
+  refView = { law, keys: ks, h: ks.length === 1 ? h : '' };
   sheet('#sheet-ref');
+  drawRef();
 }
 function drawRef() {
   const { law, keys } = refView;
@@ -539,6 +570,14 @@ function drawRef() {
   $('#ref-body').innerHTML = keys.map((k) => `<section class="a" data-n="${k}">${law.nodes[law.map.get(k)][2]}</section>`).join('');
   $('#ref-body').scrollTop = 0;
   $('#ref-back').hidden = !refStack.length;
+  // 「前条第二項」のように項・号まで指す参照は、そこに色を付けて見える位置まで送る
+  const els = hitEls($('#ref-body .a'), refView.h);
+  els.forEach((e) => e.classList.add('hit'));
+  if (els.length) {
+    const box = $('#ref-body');
+    const top = els[0].getBoundingClientRect().top - box.getBoundingClientRect().top;
+    if (top > box.clientHeight * 0.5) box.scrollTop = top - 60;
+  }
 }
 $('#ref-back').onclick = () => {
   if (!refStack.length) return;
@@ -546,10 +585,15 @@ $('#ref-back').onclick = () => {
   drawRef();
 };
 $('#ref-go').onclick = () => {
-  const { law, keys } = refView;
+  const { law, keys, h } = refView;
   sheet(null);
-  if (law === cur) jumpTo(keys[0]);
-  else location.hash = (law.id === cur.id ? tabHash({ id: law.id, rev: cur.old ? cur.rev : undefined }) : law.id) + '/' + keys[0];
+  if (law === cur) {
+    jumpTo(keys[0]);
+    flashHit(keys[0], h);
+  } else {
+    pendingHit = { id: law.id, n: keys[0], h };
+    location.hash = (law.id === cur.id ? tabHash({ id: law.id, rev: cur.old ? cur.rev : undefined }) : law.id) + '/' + keys[0];
+  }
 };
 
 /* ---------- 条文のコピー（条名をタップ） ---------- */
@@ -586,7 +630,7 @@ document.addEventListener('click', (e) => {
   if (!cur) return;
   const inRef = !!e.target.closest('#ref-body');
   const a = e.target.closest('a[data-r]');
-  if (a) return openRef(a.dataset.r, inRef ? refView.law : cur, inRef);
+  if (a) return openRef(a.dataset.r, inRef ? refView.law : cur, inRef, a.dataset.h);
   const at = e.target.closest('.at');
   if (at) {
     const sec = at.closest('.a, .x');
@@ -650,6 +694,8 @@ async function route() {
   renderLaw(law);
   const target = resolve(law, n) || store.get('pos', {})[id];
   if (!target || !scrollToArt(target, !!n)) scrollTo(0, 0);
+  if (pendingHit && pendingHit.id === id && pendingHit.n === target) flashHit(target, pendingHit.h);
+  pendingHit = null;
 }
 
 async function main() {

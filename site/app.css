@@ -181,3 +181,6 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 .sheet h2 { padding-top: 9px; }
 .reft h2 { padding-top: 6px; }
 #btn-set svg { width: 22px; height: 22px; stroke-width: 1.6; }
+
+/* 参照が指している項・号 */
+.hit { background: var(--flash); box-shadow: -8px 0 0 var(--flash), 8px 0 0 var(--flash); }
