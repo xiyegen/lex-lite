@@ -1,0 +1,44 @@
+# 週1回 e-Gov から法令を取り直し、変化があればコミットして GitHub Pages に公開する。
+# 新しい版が出た法令は、古い版のファイルを残したまま版の一覧に追加される（build.mjs 参照）。
+name: update
+on:
+  schedule:
+    - cron: '0 19 * * 6' # 毎週日曜 4:00（日本時間）
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node build.mjs --refresh
+      - name: 変化があればコミット
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site
+          git diff --cached --quiet || (git commit -m "法令データを更新" && git push)
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
