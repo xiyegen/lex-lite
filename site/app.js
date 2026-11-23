@@ -49,9 +49,12 @@ function applyPrefs() {
 // 文字サイズ等を変えても読んでいた条がずれないようにする
 function keepPlace(fn) {
   const n = curN;
+  const locked = lockY !== null;
+  unlock();
   fn();
   applyPrefs();
   if (cur && n) scrollToArt(n, false);
+  if (locked) lock();
 }
 $('#fs-dn').onclick = () => keepPlace(() => (prefs.fs = Math.max(13, prefs.fs - 1)));
 $('#fs-up').onclick = () => keepPlace(() => (prefs.fs = Math.min(26, prefs.fs + 1)));
@@ -60,12 +63,78 @@ document.querySelectorAll('[data-dim]').forEach((b) => (b.onclick = () => keepPl
 
 /* ---------- シート ---------- */
 let openSheet = null;
+// シートを開いているあいだ、裏の本文がスクロールしないよう body を固定する
+let lockY = null;
+function lock() {
+  if (lockY !== null) return;
+  lockY = scrollY;
+  Object.assign(document.body.style, { position: 'fixed', top: -lockY + 'px', left: 0, right: 0 });
+}
+function unlock() {
+  if (lockY === null) return;
+  Object.assign(document.body.style, { position: '', top: '', left: '', right: '' });
+  scrollTo(0, lockY);
+  lockY = null;
+}
 function sheet(id) {
-  if (openSheet) openSheet.hidden = true;
+  if (openSheet) {
+    openSheet.hidden = true;
+    openSheet.style.transform = openSheet.style.transition = '';
+  }
   openSheet = id ? $(id) : null;
   $('#scrim').hidden = !openSheet;
-  if (openSheet) openSheet.hidden = false;
+  if (openSheet) {
+    openSheet.hidden = false;
+    lock();
+  } else unlock();
 }
+
+// 下スワイプで閉じる。中身をスクロールできるときは、いちばん上まで戻っている場合だけ引っ張れる。
+document.querySelectorAll('.sheet').forEach((el) => {
+  let y0 = null;
+  let dy = 0;
+  let scroller = null;
+  el.addEventListener(
+    'touchstart',
+    (e) => {
+      if (e.touches.length !== 1 || e.target.closest('#pad, input')) return (y0 = null);
+      scroller = e.target.closest('.scroll, #jump-hist');
+      y0 = scroller && scroller.scrollTop > 0 ? null : e.touches[0].clientY;
+      dy = 0;
+      el.style.transition = 'none';
+    },
+    { passive: true },
+  );
+  el.addEventListener(
+    'touchmove',
+    (e) => {
+      if (y0 === null) return;
+      dy = e.touches[0].clientY - y0;
+      if (dy <= 0) {
+        // 上方向は中身のスクロールに任せる
+        el.style.transform = '';
+        if (scroller && scroller.scrollHeight > scroller.clientHeight) y0 = null;
+        return;
+      }
+      e.preventDefault();
+      el.style.transform = `translateY(${dy}px)`;
+    },
+    { passive: false },
+  );
+  const end = () => {
+    if (y0 === null) return;
+    y0 = null;
+    el.style.transition = 'transform .18s ease-out';
+    if (dy > 80) {
+      el.style.transform = 'translateY(100%)';
+      setTimeout(() => {
+        if (openSheet === el) sheet(null);
+      }, 170);
+    } else el.style.transform = '';
+  };
+  el.addEventListener('touchend', end);
+  el.addEventListener('touchcancel', end);
+});
 $('#scrim').onclick = () => sheet(null);
 $('#btn-set').onclick = () => sheet('#sheet-set');
 
