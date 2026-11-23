@@ -387,7 +387,8 @@ const SW = (version, files) => `// build.mjs が生成する。直接編集し�
 const V = 'roppo-${version}';
 const FILES = ${JSON.stringify(files)};
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(V).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' でブラウザの HTTP キャッシュを通さずに取る（古いファイルを新しい版として保存しないため）
+  e.waitUntil(caches.open(V).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(
@@ -483,12 +484,14 @@ async function main() {
   const hash = crypto.createHash('sha1');
   for (const f of (await fs.readdir(SITE, { recursive: true })).sort()) {
     const p = path.join(SITE, f);
-    if (!(await fs.stat(p)).isFile() || f === 'sw.js' || path.basename(f).startsWith('.')) continue;
+    if (!(await fs.stat(p)).isFile() || f === 'sw.js' || f === 'version.js' || path.basename(f).startsWith('.')) continue;
     hash.update(f).update(await fs.readFile(p));
     files.push('./' + f.split(path.sep).join('/'));
   }
   const version = hash.digest('hex').slice(0, 10);
-  await fs.writeFile(path.join(SITE, 'sw.js'), SW(version, ['./', ...files]));
+  // 画面側が「いま動いているコードの版」を表示するためのファイル
+  await fs.writeFile(path.join(SITE, 'version.js'), `window.APP_V = '${version}';\n`);
+  await fs.writeFile(path.join(SITE, 'sw.js'), SW(version, ['./', './version.js', ...files]));
   console.log(`\n${files.length} ファイル / version ${version}`);
   if (missing.length) console.log('見つからなかった法令: ' + missing.join('、'));
 }

@@ -666,8 +666,7 @@ async function main() {
         if (document.visibilityState === 'visible') reg.update().catch(() => {});
       });
       await navigator.serviceWorker.ready;
-      const v = (await caches.keys()).filter((k) => k.startsWith('roppo-')).pop();
-      setFoot(true, v ? v.slice(6) : '');
+      setFoot(true, window.APP_V || '');
     } catch {
       $('#foot').innerHTML += '<br>この開き方ではオフライン保存が使えません（HTTPS が必要）。';
     }
