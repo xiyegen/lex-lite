@@ -267,8 +267,10 @@ function article(a) {
   for (const c of kids(a)) {
     if (typeof c === 'string') continue;
     if (c.tag === 'ArticleCaption') {
-      cap = `<div class="cap">${inline(c)}</div>`;
       capText = plain(c);
+      // 見出しが条名のあとに置かれている法令（裁判所法など）は、元の並びどおり条名の直後に出す
+      if (title) title += `</b>${inline(c)}<b>`;
+      else cap = `<div class="cap">${inline(c)}</div>`;
     } else if (c.tag === 'ArticleTitle') title = inline(c);
     else if (c.tag === 'Paragraph') {
       html += unit(c, first ? `<b class="at">${title}</b>` : '');
@@ -329,6 +331,46 @@ function convert(raw, title) {
     }
   }
   return nodes;
+}
+
+/* ---------- 検証: e-Gov の元データの文字列と、アプリが表示する文字列が一致するか ---------- */
+// 元データ側: 収録対象（制定文・前文・本則・制定時の附則）の文字を、文書の順にすべてつなぐ。ルビの読みと図は除く。
+function sourceText(raw) {
+  const body = kids(raw.law_full_text).find((c) => c.tag === 'LawBody');
+  let out = '';
+  const visit = (n) => {
+    if (typeof n === 'string') return (out += n);
+    if (n.tag === 'Rt' || n.tag === 'Fig') return;
+    kids(n).forEach(visit);
+  };
+  for (const c of kids(body)) {
+    if (typeof c === 'string') continue;
+    if (['EnactStatement', 'Preamble', 'MainProvision'].includes(c.tag)) visit(c);
+    else if (c.tag === 'SupplProvision' && !(c.attr && c.attr.AmendLawNum)) visit(c);
+  }
+  return out;
+}
+// 表示側: 生成した HTML からタグを外した文字
+function shownText(nodes) {
+  return nodes
+    .map((nd) => (nd[0] === 'h' ? nd[2] : nd[0] === 'a' ? nd[2] : nd[1]))
+    .join('')
+    .replace(/<rt>.*?<\/rt>/g, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/（図は省略）/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+// 空白の違い（項番号のあとの全角空白など）は無視して比べる。食い違いがあれば、その場所を返す。
+function verify(raw, nodes) {
+  const norm = (t) => t.replace(/[\s\u3000]/g, '');
+  const a = norm(sourceText(raw));
+  const b = norm(shownText(nodes));
+  if (a === b) return null;
+  let i = 0;
+  while (i < a.length && a[i] === b[i]) i++;
+  return `${i}文字目から不一致（元 ${a.length}字 / 表示 ${b.length}字）\n    元データ: …${a.slice(Math.max(0, i - 25), i)}【${a.slice(i, i + 40)}】\n    表示    : …${b.slice(Math.max(0, i - 25), i)}【${b.slice(i, i + 40)}】`;
 }
 
 async function getJson(url) {
@@ -426,6 +468,8 @@ async function main() {
   const groups = [];
   const missing = [];
   const keep = new Set(['index.json']);
+  const failures = [];
+  let checked = 0;
   let changed = false;
   // 1周目: 現行版を全部取得し、法令間の参照を解決するための題名と条の一覧を集める
   const raws = new Map();
@@ -465,6 +509,9 @@ async function main() {
         if (exists && v.rev !== rev && !REGEN) continue; // 旧版は生成済みのファイルを使い回す
         const r = v.rev === rev ? raw : await fetchRevision(v.rev);
         const nodes = convert(r, title);
+        const bad = verify(r, nodes);
+        if (bad) failures.push(`${title}（${v.enforced} 施行）: ${bad}`);
+        checked++;
         const json = JSON.stringify({ id, title, num: r.law_info.law_num, rev: v.rev, enforced: v.enforced, nodes });
         await fs.writeFile(file, json);
         console.log(`${title}  ${v.enforced} 施行  ${nodes.filter((n) => n[0] === 'a').length}条  ${(json.length / 1024).toFixed(0)}KB`);
@@ -473,6 +520,12 @@ async function main() {
     }
     groups.push({ name: g.group, laws });
   }
+  // 条文の文字が元データと食い違う版が1つでもあれば、公開せずに止める
+  if (failures.length) {
+    console.error(`\n検証に失敗: ${failures.length} / ${checked} 版\n` + failures.map((f) => '  ' + f).join('\n'));
+    process.exit(1);
+  }
+  console.log(`\n検証 OK: ${checked} 版すべて、元データと表示の文字が一致`);
   if (prev.size !== groups.reduce((n, g) => n + g.laws.length, 0)) changed = true;
   for (const f of await fs.readdir(DATA)) if (!keep.has(f)) await fs.unlink(path.join(DATA, f));
   // built はデータの中身が変わった日。変化がなければ据え置く（毎回の再ダウンロードを避ける）。
