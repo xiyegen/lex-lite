@@ -5,12 +5,20 @@
   --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
   color-scheme: light dark;
 }
+/* ダーク: 端末の設定に従う（「ライト」を選んだときは除く）。「ダーク」を選んだときは常に。 */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #17181a; --fg: #e8e6e1; --sub: #98968f; --line: #34353a; --panel: #222327;
     --accent: #7fb2e5; --accent-fg: #10202f; --key: #3a3b40; --key2: #2a2b2f; --mark: #6b5a12; --flash: #26324a;
+    color-scheme: dark;
   }
 }
+:root[data-theme="dark"] {
+  --bg: #17181a; --fg: #e8e6e1; --sub: #98968f; --line: #34353a; --panel: #222327;
+    --accent: #7fb2e5; --accent-fg: #10202f; --key: #3a3b40; --key2: #2a2b2f; --mark: #6b5a12; --flash: #26324a;
+  color-scheme: dark;
+}
+:root[data-theme="light"] { color-scheme: light; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html { -webkit-text-size-adjust: 100%; }
 body {

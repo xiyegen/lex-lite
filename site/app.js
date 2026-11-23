@@ -36,11 +36,16 @@ const stacks = new Map(); // 法令ごとの「戻る／進む」
 const metaOf = (id) => index.groups.flatMap((g) => g.laws).find((l) => l.id === id);
 
 /* ---------- 設定 ---------- */
-const prefs = Object.assign({ fs: 17, font: 'gothic', dim: '0' }, store.get('prefs', {}));
+const prefs = Object.assign({ fs: 17, font: 'gothic', dim: '0', theme: 'auto' }, store.get('prefs', {}));
 function applyPrefs() {
   document.documentElement.style.setProperty('--fs', prefs.fs + 'px');
   document.body.dataset.font = prefs.font;
   document.body.dataset.dim = prefs.dim;
+  if (prefs.theme === 'auto') delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = prefs.theme;
+  // ステータスバーまわりの色を背景に合わせる
+  $('#tc').content = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  document.querySelectorAll('[data-theme-v]').forEach((b) => b.classList.toggle('on', b.dataset.themeV === prefs.theme));
   $('#fs-val').textContent = prefs.fs;
   document.querySelectorAll('[data-font]').forEach((b) => b.classList.toggle('on', b.dataset.font === prefs.font));
   document.querySelectorAll('[data-dim]').forEach((b) => b.classList.toggle('on', b.dataset.dim === prefs.dim));
@@ -56,6 +61,8 @@ function keepPlace(fn) {
   if (cur && n) scrollToArt(n, false);
   if (locked) lock();
 }
+document.querySelectorAll('[data-theme-v]').forEach((b) => (b.onclick = () => ((prefs.theme = b.dataset.themeV), applyPrefs())));
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyPrefs);
 $('#fs-dn').onclick = () => keepPlace(() => (prefs.fs = Math.max(13, prefs.fs - 1)));
 $('#fs-up').onclick = () => keepPlace(() => (prefs.fs = Math.min(26, prefs.fs + 1)));
 document.querySelectorAll('[data-font]').forEach((b) => (b.onclick = () => keepPlace(() => (prefs.font = b.dataset.font))));

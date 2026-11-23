@@ -8,8 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="簡易六法">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#fbfaf4" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#17181a" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" id="tc" content="#fbfaf4">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="app.css">
@@ -69,6 +68,8 @@
 
 <section id="sheet-set" class="sheet" hidden>
   <h2>表示設定</h2>
+  <div class="row"><span>外観</span>
+    <span class="seg"><button data-theme-v="auto">自動</button><button data-theme-v="light">ライト</button><button data-theme-v="dark">ダーク</button></span></div>
   <div class="row"><span>文字サイズ</span>
     <span class="seg"><button id="fs-dn">小</button><b id="fs-val"></b><button id="fs-up">大</button></span></div>
   <div class="row"><span>書体</span>
