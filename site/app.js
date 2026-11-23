@@ -30,8 +30,10 @@ let index = null;
 const laws = new Map();
 let cur = null; // 表示中の法令
 let curN = null; // 画面上端にある条
-const back = [];
-const fwd = [];
+let back = [];
+let fwd = [];
+const stacks = new Map(); // 法令ごとの「戻る／進む」
+const metaOf = (id) => index.groups.flatMap((g) => g.laws).find((l) => l.id === id);
 
 /* ---------- 設定 ---------- */
 const prefs = Object.assign({ fs: 17, font: 'gothic', dim: '0' }, store.get('prefs', {}));
@@ -93,7 +95,9 @@ function renderHome() {
 $('#filter').oninput = renderHome;
 $('#lawlist').onclick = (e) => {
   const b = e.target.closest('.lawrow');
-  if (b) location.hash = b.dataset.id;
+  if (!b) return;
+  const t = tabs.find((x) => x.id === b.dataset.id);
+  location.hash = t ? tabHash(t) : b.dataset.id;
 };
 $('#back').onclick = () => (location.hash = '');
 
@@ -102,6 +106,37 @@ function setFoot(offline) {
     `出典: e-Gov法令検索（デジタル庁）のデータを加工して作成。<br>データ更新日 <b>${index.built}</b>。改正法の附則と別表は収録していません。<br>` +
     (offline ? '<b>オフライン利用可</b>（全法令を端末に保存済み）' : 'オフライン用データを保存中…');
 }
+
+/* ---------- タブ（開いている法令。1法令につき1つ） ---------- */
+let tabs = store.get('tabs', []); // [{ id, rev }]  rev は旧版を表示しているときだけ
+const tabHash = (t) => t.id + (t.rev ? '@' + t.rev : '');
+function drawTabs() {
+  const el = $('#tabs');
+  el.hidden = !tabs.length;
+  el.innerHTML =
+    tabs
+      .map((t) => {
+        const on = cur && cur.id === t.id;
+        return `<button class="tab${on ? ' on' : ''}" data-id="${t.id}"><span>${esc(metaOf(t.id).title)}</span>${on ? '<i data-close aria-label="閉じる">×</i>' : ''}</button>`;
+      })
+      .join('') + (cur ? '<button class="tab add" data-add aria-label="別の法令を開く">＋</button>' : '');
+  const on = el.querySelector('.on');
+  if (on) el.scrollLeft = Math.max(0, on.offsetLeft - 60);
+}
+$('#tabs').onclick = (e) => {
+  const b = e.target.closest('.tab');
+  if (!b) return;
+  if (b.dataset.add !== undefined) return (location.hash = '');
+  const i = tabs.findIndex((t) => t.id === b.dataset.id);
+  if (e.target.closest('[data-close]')) {
+    tabs.splice(i, 1);
+    store.set('tabs', tabs);
+    const next = tabs[Math.min(i, tabs.length - 1)];
+    location.hash = next ? tabHash(next) : '';
+    return;
+  }
+  location.hash = tabHash(tabs[i]);
+};
 
 /* ---------- 法令の読み込みと表示 ---------- */
 async function loadLaw(id) {
@@ -392,6 +427,98 @@ $('#find-res').onclick = (e) => {
   jumpTo(b.dataset.n);
 };
 
+/* ---------- 条文中の参照を小窓で開く ---------- */
+let refView = null; // { law, keys }
+const refStack = [];
+// data-r: "95" / "93,94"（同じ法令）、"法令ID:709"（他の法令）
+function parseRef(r, base) {
+  const i = r.indexOf(':');
+  if (i > 0 && !/^[\d_]+$/.test(r.slice(0, i))) return { lawId: r.slice(0, i), keys: [r.slice(i + 1)] };
+  return { lawId: base.id, keys: r.split(',') };
+}
+async function openRef(r, base, push) {
+  const { lawId, keys } = parseRef(r, base);
+  let law = base;
+  if (lawId !== base.id) {
+    const m = metaOf(lawId);
+    try {
+      law = await loadLaw(m.versions[0].rev);
+    } catch {
+      return toast('読み込めませんでした');
+    }
+    law.meta = m;
+  }
+  const ks = keys.map((k) => resolve(law, k)).filter(Boolean);
+  if (!ks.length) return toast('該当する条がありません');
+  if (push && refView) refStack.push(refView);
+  else refStack.length = 0;
+  refView = { law, keys: ks };
+  drawRef();
+  sheet('#sheet-ref');
+}
+function drawRef() {
+  const { law, keys } = refView;
+  const range = keys.length > 1 ? `${label(keys[0])}〜${label(keys[keys.length - 1])}` : label(keys[0]);
+  $('#ref-title').textContent = (law.id !== cur.id ? law.title + ' ' : '') + range;
+  $('#ref-body').innerHTML = keys.map((k) => `<section class="a" data-n="${k}">${law.nodes[law.map.get(k)][2]}</section>`).join('');
+  $('#ref-body').scrollTop = 0;
+  $('#ref-back').hidden = !refStack.length;
+}
+$('#ref-back').onclick = () => {
+  if (!refStack.length) return;
+  refView = refStack.pop();
+  drawRef();
+};
+$('#ref-go').onclick = () => {
+  const { law, keys } = refView;
+  sheet(null);
+  if (law === cur) jumpTo(keys[0]);
+  else location.hash = (law.id === cur.id ? tabHash({ id: law.id, rev: cur.old ? cur.rev : undefined }) : law.id) + '/' + keys[0];
+};
+
+/* ---------- 条文のコピー（条名をタップ） ---------- */
+function artText(sec) {
+  const lines = [];
+  sec.querySelectorAll('.cap, .u, .s, tr').forEach((el) => {
+    const row = el.tagName === 'TR';
+    if (!row && el.closest('table')) return;
+    const c = el.cloneNode(true);
+    c.querySelectorAll('rt').forEach((x) => x.remove());
+    const d = Number((el.className.match(/\bd(\d)\b/) || [])[1] || 0);
+    lines.push('　'.repeat(d) + (row ? [...c.children].map((td) => td.textContent.trim()).join('\t') : c.textContent));
+  });
+  return lines.join('\n');
+}
+async function copy(text, msg) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+  }
+  toast(msg);
+}
+$('#ref-copy').onclick = () => {
+  const secs = [...document.querySelectorAll('#ref-body .a')];
+  copy(refView.law.title + '\n' + secs.map(artText).join('\n'), 'コピーしました');
+};
+document.addEventListener('click', (e) => {
+  if (!cur) return;
+  const inRef = !!e.target.closest('#ref-body');
+  const a = e.target.closest('a[data-r]');
+  if (a) return openRef(a.dataset.r, inRef ? refView.law : cur, inRef);
+  const at = e.target.closest('.at');
+  if (at) {
+    const sec = at.closest('.a, .x');
+    const law = inRef ? refView.law : cur;
+    copy(law.title + '\n' + artText(sec), (sec.dataset.n ? label(sec.dataset.n) : at.textContent) + 'をコピーしました');
+  }
+});
+
 /* ---------- ルーティング: #<法令ID> または #<法令ID>/<条> ---------- */
 async function route() {
   sheet(null);
@@ -409,6 +536,7 @@ async function route() {
     $('#cur').textContent = '';
     $('#body').innerHTML = '';
     renderHome();
+    drawTabs();
     scrollTo(0, 0);
     return;
   }
@@ -426,8 +554,14 @@ async function route() {
   cur.meta = meta;
   cur.old = ver !== meta.versions[0];
   curN = null;
-  back.length = fwd.length = 0;
+  if (!stacks.has(id)) stacks.set(id, { back: [], fwd: [] });
+  ({ back, fwd } = stacks.get(id));
   navButtons();
+  let tab = tabs.find((t) => t.id === id);
+  if (!tab) tabs.push((tab = { id }));
+  tab.rev = cur.old ? ver.rev : undefined;
+  store.set('tabs', tabs);
+  drawTabs();
   document.body.classList.remove('home');
   $('#home').hidden = true;
   $('#law').hidden = $('#bar').hidden = false;
@@ -445,6 +579,7 @@ async function route() {
 async function main() {
   applyPrefs();
   index = await (await fetch('data/index.json')).json();
+  tabs = tabs.filter((t) => metaOf(t.id));
   setFoot(false);
   addEventListener('hashchange', route);
   await route();

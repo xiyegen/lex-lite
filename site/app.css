@@ -1,7 +1,7 @@
 :root {
   --bg: #fbfaf4; --fg: #1d1d1f; --sub: #7a7a78; --line: #dcdad0; --panel: #ffffff;
   --accent: #1f4e79; --accent-fg: #fff; --key: #ffffff; --key2: #d9dade; --mark: #ffe58a; --flash: #e6ecfb;
-  --fs: 17px; --hd: 48px; --bar: 54px;
+  --fs: 17px; --hd: 48px; --bar: 54px; --tabs: 43px;
   --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
   color-scheme: light dark;
 }
@@ -33,7 +33,7 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 body.home #back { visibility: hidden; }
 body.home #ttl { padding-left: 0; }
 
-main { padding: calc(var(--hd) + var(--sat) + 12px) 16px calc(var(--bar) + var(--sab) + 24px); max-width: 720px; margin: 0 auto; }
+main { padding: calc(var(--hd) + var(--sat) + 12px) 16px calc(var(--bar) + var(--tabs) + var(--sab) + 24px); max-width: 720px; margin: 0 auto; }
 
 /* 法令一覧 */
 #filter, #find-q {
@@ -51,8 +51,8 @@ main { padding: calc(var(--hd) + var(--sat) + 12px) 16px calc(var(--bar) + var(-
 #foot b { color: var(--fg); font-weight: 600; }
 
 /* 条文 */
-#body { font-size: var(--fs); line-height: 1.85; word-break: break-all; line-break: strict; }
-body[data-font="mincho"] #body { font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif; }
+.lawtext { font-size: var(--fs); line-height: 1.85; word-break: break-all; line-break: strict; }
+body[data-font="mincho"] .lawtext { font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif; }
 #body .lawnum { color: var(--sub); font-size: .82em; line-height: 1.6; margin-bottom: .3em; }
 #body h1 { font-size: 1.45em; margin: 0 0 .8em; line-height: 1.4; }
 #body .h { font-size: 1em; font-weight: 700; margin: 1.9em 0 .5em; line-height: 1.5; scroll-margin-top: calc(var(--hd) + var(--sat) + 8px); }
@@ -76,10 +76,9 @@ body[data-dim="1"] .pr { color: var(--sub); }
 rt { font-size: .5em; }
 
 /* 下部バー */
-#bar {
-  position: fixed; inset: auto 0 0 0; z-index: 10; height: calc(var(--bar) + var(--sab)); padding-bottom: var(--sab);
-  display: grid; grid-template-columns: repeat(5, 1fr); background: var(--bg); border-top: 1px solid var(--line);
-}
+#dock { position: fixed; inset: auto 0 0 0; z-index: 10; background: var(--bg); border-top: 1px solid var(--line); padding-bottom: var(--sab); }
+#bar { display: grid; grid-template-columns: repeat(5, 1fr); height: var(--bar); }
+#tabs:not([hidden]) + #bar { border-top: 1px solid var(--line); }
 #bar button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; color: var(--accent); font-size: 10.5px; }
 #bar button:disabled { color: var(--line); }
 
@@ -134,7 +133,7 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 .seg b { min-width: 3em; text-align: center; font-size: 14px; font-variant-numeric: tabular-nums; }
 
 #toast {
-  position: fixed; left: 50%; bottom: calc(var(--bar) + var(--sab) + 16px); transform: translateX(-50%); z-index: 40;
+  position: fixed; left: 50%; bottom: calc(var(--bar) + var(--tabs) + var(--sab) + 16px); transform: translateX(-50%); z-index: 40;
   background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 20px; font-size: 14px; white-space: nowrap;
 }
 
@@ -142,3 +141,23 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 #old { flex: none; align-self: center; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; background: #b4531a; color: #fff; }
 #ver-btn { color: var(--accent); font-size: 1em; padding: 4px 0; }
 #ver-list .hrow:first-child { border-top: 0; }
+
+/* タブ（開いている法令） */
+#tabs { display: flex; gap: 6px; overflow-x: auto; padding: 6px 10px; scrollbar-width: none; }
+#tabs::-webkit-scrollbar { display: none; }
+.tab { flex: none; display: flex; align-items: center; gap: 4px; max-width: 13em; height: 30px; padding: 0 12px; border-radius: 15px; border: 1px solid var(--line); font-size: 13px; color: var(--sub); }
+.tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; padding-right: 4px; }
+.tab i { flex: none; font-style: normal; width: 24px; height: 24px; display: grid; place-items: center; font-size: 16px; font-weight: 400; }
+.tab.add { padding: 0 12px; font-size: 17px; color: var(--accent); }
+
+/* 条文中の参照と、その小窓 */
+.lawtext a[data-r] { text-decoration: underline dotted var(--sub); text-underline-offset: 4px; cursor: pointer; -webkit-touch-callout: none; }
+.at { cursor: pointer; }
+.reft { display: flex; align-items: center; padding: 6px 6px 0; }
+.reft h2 { flex: 1; padding: 10px 44px 10px 0; }
+.reft #ref-back[hidden] + h2 { padding-left: 44px; }
+#ref-body { padding-top: 0; min-height: 0; }
+.refbtns { flex: none; display: grid; grid-template-columns: 1fr 2fr; gap: 10px; padding: 10px 16px 12px; border-top: 1px solid var(--line); }
+.refbtns button { height: 44px; border-radius: 10px; border: 1px solid var(--line); font-size: 15px; font-weight: 600; color: var(--accent); }
+#ref-go { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }

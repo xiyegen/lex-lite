@@ -20,22 +20,160 @@ const HEAD = { Part: 1, Chapter: 2, Section: 3, Subsection: 4, Division: 5 };
 
 const esc = (s) => s.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
 
-// 括弧書きを <span class="pr"> で包む（入れ子対応）。対応が取れない文字列はそのまま返す。
-function txt(s, paren) {
-  if (!paren || !/[（(]/.test(s)) return esc(s);
-  let out = '';
-  let depth = 0;
+/* ---------- 条文中の参照（第九十五条、前条、民法第七百九条 など）---------- */
+const ARTS = new Map(); // 法令ID → 現行版の条の一覧 { order, set, ranges }
+let TITLES = []; // [題名, 法令ID] を題名の長い順に
+const LOCAL_ALIAS = { 会社法施行規則: { 法: '会社法' }, 会社計算規則: { 法: '会社法' } };
+let ctx = null; // いま変換中の条の文脈。null のあいだは参照をリンクにしない（附則など）
+
+const KN = '[〇一二三四五六七八九十百千]+';
+const REF = new RegExp(`(第${KN}条(?:[のノ]${KN})*|前条|次条|同条|前[二三四五六七八九十]条)((?:第${KN}項)?(?:第${KN}号)?)`, 'g');
+// 2つの参照のあいだがこれだけなら、同じ法令の条が続いているとみなす（「第九十二条第九項及び第十項、第九十四条」）
+const CONNECT = new RegExp(`^(?:まで|、|，|及び|又は|並びに|若しくは|から|第${KN}[項号編章節款目]|ただし書|本文|前段|後段|各号|[イロハニホヘトチリヌ])+$`);
+// 法令名らしい語の終わり（「同法」が何を指すかを探すのに使う）
+const NAMEPOS = /(?<!方)(?:法律|法|規則|令)(?=(?:（[^（）]*）)?(?:第|の規定|中|又は|及び|並びに|、|に規定|による|その他|（))/g;
+const SELF = /(この法律|この法|本法|この規則|この省令|この政令)$/;
+const SAME = /同(法|法律|令|規則|省令|政令)$/;
+const NAMEEND = /(法|法律|令|規則|条約|規程|憲章|議定書|条例|定款|規約|附則|別表)$/;
+const CJK = /[一-鿿゠-ヿ々]/;
+
+function kan(s) {
+  let n = 0;
+  let c = 0;
   for (const ch of s) {
-    if (ch === '（') {
-      depth++;
-      out += '<span class="pr">（';
-    } else if (ch === '）') {
-      if (depth === 0) return esc(s);
-      depth--;
-      out += '）</span>';
-    } else out += esc(ch);
+    const d = '〇一二三四五六七八九'.indexOf(ch);
+    if (d >= 0) c = c * 10 + d;
+    else {
+      n += (c || 1) * { 十: 10, 百: 100, 千: 1000 }[ch];
+      c = 0;
+    }
   }
-  return depth === 0 ? out : esc(s);
+  return n + c;
+}
+// "第三百九十八条の二" → "398_2"
+const keyOf = (t) => t.slice(1).split(/条[のノ]?|[のノ]/).filter(Boolean).map(kan).join('_');
+
+function collectArts(raw) {
+  const order = [];
+  const visit = (n) => {
+    for (const c of kids(n)) {
+      if (typeof c === 'string') continue;
+      if (c.tag === 'Article') {
+        if (c.attr && c.attr.Num) order.push(c.attr.Num);
+      } else visit(c);
+    }
+  };
+  const body = kids(raw.law_full_text).find((c) => c.tag === 'LawBody');
+  visit(kids(body).find((c) => c.tag === 'MainProvision'));
+  const ranges = order.filter((k) => k.includes(':')).map((k) => [...k.split(':').map((x) => parseInt(x, 10)), k]);
+  return { order, set: new Set(order), ranges };
+}
+// 実在する条なら、その Num を返す（削除された範囲に入る番号は範囲の Num）
+function exists(arts, key) {
+  if (!arts) return null;
+  if (arts.set.has(key)) return key;
+  if (key.includes('_')) return null;
+  const v = parseInt(key, 10);
+  const r = arts.ranges.find(([a, b]) => a <= v && v <= b);
+  return r ? r[2] : null;
+}
+
+// 文字列の末尾が収録法令の題名なら法令ID。別の名前の一部（「旧民法」「日本郵政株式会社法」）なら null。題名でなければ undefined。
+function titleAt(p) {
+  for (const [t, id] of [...ctx.alias, ...TITLES]) {
+    if (!p.endsWith(t)) continue;
+    const before = p[p.length - t.length - 1];
+    return before && CJK.test(before) ? null : id;
+  }
+  return NAMEEND.test(p) ? null : undefined;
+}
+
+// 直前の文字列から、どの法令の条かを決める。戻り値: 法令ID / null（リンクにしない）
+function lawBefore(prefix) {
+  let p = prefix;
+  if (p.endsWith('）')) {
+    // 「民法（明治二十九年法律第八十九号）第七百九条」の括弧を読み飛ばす
+    let d = 0;
+    let i = p.length - 1;
+    for (; i >= 0; i--) {
+      if (p[i] === '）') d++;
+      else if (p[i] === '（' && --d === 0) break;
+    }
+    if (i > 0) p = p.slice(0, i);
+  }
+  if (SELF.test(p)) return ctx.lawId;
+  if (SAME.test(p)) {
+    // 直近に出てきた法令名を探す。条番号を伴わない言及（「民事訴訟法第一編から…」）も拾う。
+    const hits = [...p.replace(SAME, '').matchAll(NAMEPOS)];
+    if (hits.length) {
+      const h = hits[hits.length - 1];
+      ctx.named = titleAt(p.slice(0, h.index + h[0].length));
+    }
+    return ctx.named || null;
+  }
+  const t = titleAt(p);
+  if (t !== undefined) {
+    ctx.named = t;
+    return t;
+  }
+  return ctx.lawId;
+}
+
+function findRefs(s) {
+  const out = [];
+  let prevEnd = -1;
+  let prevLaw = null;
+  for (const m of s.matchAll(REF)) {
+    const start = m.index;
+    const end = start + m[0].length;
+    const head = m[1];
+    let attr = null;
+    let law = ctx.lawId;
+    if (head === '同条') attr = ctx.last;
+    else if (head[0] === '第') {
+      law = prevEnd >= 0 && CONNECT.test(s.slice(prevEnd, start)) ? prevLaw : lawBefore(s.slice(0, start));
+      const key = law && exists(law === ctx.lawId ? ctx.own : ARTS.get(law), keyOf(head));
+      if (key) attr = law === ctx.lawId ? key : `${law}:${key}`;
+    } else if (ctx.idx >= 0) {
+      // 前条・次条・前二条
+      const n = head === '次条' ? -1 : head === '前条' ? 1 : kan(head.slice(1, -1));
+      const ks = n < 0 ? [ctx.own.order[ctx.idx + 1]] : ctx.own.order.slice(Math.max(0, ctx.idx - n), ctx.idx);
+      if (ks.length && ks.every(Boolean)) attr = ks.join(',');
+    }
+    ctx.last = attr;
+    prevEnd = end;
+    prevLaw = law;
+    if (attr) out.push({ start, end, attr });
+  }
+  return out;
+}
+
+// 本文の文字列を HTML にする。括弧書きは <span class="pr">、条への参照は <a data-r> で包む。
+function txt(s, paren) {
+  if (!paren) return esc(s);
+  const refs = ctx ? findRefs(s) : [];
+  let d = 0;
+  let bal = /（/.test(s);
+  for (const ch of s) {
+    if (ch === '（') d++;
+    else if (ch === '）' && --d < 0) break;
+  }
+  if (d !== 0) bal = false;
+  if (!refs.length && !bal) return esc(s);
+  let out = '';
+  let ri = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (ri < refs.length && refs[ri].start === i) out += `<a data-r="${refs[ri].attr}">`;
+    const ch = s[i];
+    if (bal && ch === '（') out += '<span class="pr">（';
+    else if (bal && ch === '）') out += '）</span>';
+    else out += esc(ch);
+    if (ri < refs.length && refs[ri].end === i + 1) {
+      out += '</a>';
+      ri++;
+    }
+  }
+  return out;
 }
 
 const kids = (n) => (n && n.children) || [];
@@ -116,6 +254,11 @@ function block(n) {
 }
 
 function article(a) {
+  if (ctx) {
+    ctx.idx = ctx.own.order.indexOf((a.attr && a.attr.Num) || '');
+    ctx.last = null;
+    ctx.named = null;
+  }
   let cap = '';
   let capText = '';
   let title = '';
@@ -154,7 +297,11 @@ function walk(node, out, suppl) {
   }
 }
 
-function convert(raw) {
+function convert(raw, title) {
+  const own = collectArts(raw);
+  const alias = Object.entries(LOCAL_ALIAS[title] || {}).map(([k, v]) => [k, (TITLES.find(([t]) => t === v) || [])[1]]).filter(([, id]) => id);
+  const main = () => ({ lawId: raw.law_info.law_id, own, alias, idx: -1, last: null, named: null });
+  ctx = null;
   const body = kids(raw.law_full_text).find((c) => c.tag === 'LawBody');
   const nodes = [];
   for (const c of kids(body)) {
@@ -167,7 +314,9 @@ function convert(raw) {
         nodes.push(['x', block(c)]);
         break;
       case 'MainProvision':
+        ctx = main();
         walk(c, nodes, false);
+        ctx = null;
         break;
       case 'SupplProvision': {
         if (c.attr && c.attr.AmendLawNum) break; // 改正法の附則は載せない
@@ -277,14 +426,28 @@ async function main() {
   const missing = [];
   const keep = new Set(['index.json']);
   let changed = false;
+  // 1周目: 現行版を全部取得し、法令間の参照を解決するための題名と条の一覧を集める
+  const raws = new Map();
   for (const g of config) {
-    const laws = [];
     for (const title of g.laws) {
       const raw = await fetchCurrent(title);
       if (!raw) {
         missing.push(title);
         continue;
       }
+      raws.set(title, raw);
+      ARTS.set(raw.law_info.law_id, collectArts(raw));
+      TITLES.push([title, raw.law_info.law_id]);
+      if (title === '日本国憲法') TITLES.push(['憲法', raw.law_info.law_id]);
+    }
+  }
+  TITLES.sort((a, b) => b[0].length - a[0].length);
+
+  for (const g of config) {
+    const laws = [];
+    for (const title of g.laws) {
+      const raw = raws.get(title);
+      if (!raw) continue;
       const id = raw.law_info.law_id;
       const rev = raw.revision_info.law_revision_id;
       const versions = [...((prev.get(id) || {}).versions || [])];
@@ -300,7 +463,7 @@ async function main() {
         const exists = await fs.stat(file).then(() => true, () => false);
         if (exists && v.rev !== rev && !REGEN) continue; // 旧版は生成済みのファイルを使い回す
         const r = v.rev === rev ? raw : await fetchRevision(v.rev);
-        const nodes = convert(r);
+        const nodes = convert(r, title);
         const json = JSON.stringify({ id, title, num: r.law_info.law_num, rev: v.rev, enforced: v.enforced, nodes });
         await fs.writeFile(file, json);
         console.log(`${title}  ${v.enforced} 施行  ${nodes.filter((n) => n[0] === 'a').length}条  ${(json.length / 1024).toFixed(0)}KB`);
