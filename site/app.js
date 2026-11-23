@@ -101,10 +101,10 @@ $('#lawlist').onclick = (e) => {
 };
 $('#back').onclick = () => (location.hash = '');
 
-function setFoot(offline) {
+function setFoot(offline, ver) {
   $('#foot').innerHTML =
     `出典: e-Gov法令検索（デジタル庁）のデータを加工して作成。<br>データ更新日 <b>${index.built}</b>。改正法の附則と別表は収録していません。<br>` +
-    (offline ? '<b>オフライン利用可</b>（全法令を端末に保存済み）' : 'オフライン用データを保存中…');
+    (offline ? `<b>オフライン利用可</b>（全法令を端末に保存済み）<br>アプリの版 ${ver}` : 'オフライン用データを保存中…');
 }
 
 /* ---------- タブ（開いている法令。1法令につき1つ） ---------- */
@@ -585,12 +585,24 @@ async function main() {
   await route();
   if ('serviceWorker' in navigator) {
     try {
-      await navigator.serviceWorker.register('sw.js');
+      // 新しい版が端末に入り終わったら知らせる（初回の保存完了時は出さない）
+      let had = !!navigator.serviceWorker.controller;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (had) $('#update').hidden = false;
+        had = true;
+      });
+      const reg = await navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' });
+      // ホーム画面のアプリは閉じても裏で生きていることが多いので、前面に戻るたびに更新を確かめる
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
       await navigator.serviceWorker.ready;
-      setFoot(true);
+      const v = (await caches.keys()).filter((k) => k.startsWith('roppo-')).pop();
+      setFoot(true, v ? v.slice(6) : '');
     } catch {
       $('#foot').innerHTML += '<br>この開き方ではオフライン保存が使えません（HTTPS が必要）。';
     }
   }
 }
+$('#update').onclick = () => location.reload();
 main();
