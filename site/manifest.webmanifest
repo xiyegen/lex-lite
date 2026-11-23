@@ -1,6 +1,6 @@
 {
-  "name": "六法",
-  "short_name": "六法",
+  "name": "簡易六法",
+  "short_name": "簡易六法",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

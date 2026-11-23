@@ -404,7 +404,7 @@ async function route() {
     document.body.classList.add('home');
     $('#home').hidden = false;
     $('#law').hidden = $('#bar').hidden = true;
-    $('#lawname').textContent = '六法';
+    $('#lawname').textContent = '簡易六法';
     $('#old').hidden = true;
     $('#cur').textContent = '';
     $('#body').innerHTML = '';
