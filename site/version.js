@@ -1,1 +1,1 @@
-window.APP_V = 'b0774838a2';
+window.APP_V = 'a478232208';

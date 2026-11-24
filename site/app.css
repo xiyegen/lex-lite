@@ -168,7 +168,7 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; }
 .tab.add { padding: 0 12px; font-size: 17px; color: var(--accent); }
 
 /* 条文中の参照と、その小窓 */
-.lawtext a[data-r] { color: var(--accent); cursor: pointer; -webkit-touch-callout: none; }
+.lawtext a[data-r] { color: var(--accent); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 5px; text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent); cursor: pointer; -webkit-touch-callout: none; }
 .at { cursor: pointer; }
 .reft { display: flex; align-items: center; padding: 6px 6px 0; }
 .reft h2 { flex: 1; padding: 10px 44px 10px 0; }
