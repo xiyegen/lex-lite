@@ -224,6 +224,14 @@ function sentence(n) {
 const UNIT = /^(Paragraph|Item|Subitem\d+)$/;
 const depthOf = (tag) => (tag === 'Paragraph' ? 0 : tag === 'Item' ? 1 : 1 + Number(tag.slice(7)));
 
+// 2 → ②。51以上は（51）
+function circled(n) {
+  if (n >= 1 && n <= 20) return String.fromCodePoint(0x245f + n);
+  if (n <= 35) return String.fromCodePoint(0x3250 + n - 20);
+  if (n <= 50) return String.fromCodePoint(0x32b0 + n - 35);
+  return `（${n}）`;
+}
+
 // 項・号・号の細分を 1 ブロックに描く。lead は第1項に付ける条名。
 function unit(n, lead) {
   let title = '';
@@ -237,6 +245,9 @@ function unit(n, lead) {
     else if (c.tag === n.tag + 'Sentence') sent = sentence(c);
     else rest += block(c);
   }
+  // 古い法令（憲法、刑事訴訟法など）は、原文に項番号が無い。e-Gov の元データでは OldNum="true" で番号が空。
+  // 六法の慣例どおり、2項以降に丸数字を補う。原文に無い文字なので class="gen" を付け、検証では除外する。
+  if (!title && !lead && n.tag === 'Paragraph' && n.attr && n.attr.OldNum === 'true') title = `<span class="gen">${circled(Number(n.attr.Num))}</span>`;
   const head = lead || (title ? `<span class="n">${title}</span>` : '');
   const d = depthOf(n.tag);
   const body = head ? `${head}　${sent}` : sent;
@@ -367,6 +378,7 @@ function shownText(nodes) {
     .map((nd) => (nd[0] === 'h' ? nd[2] : nd[0] === 'a' ? nd[2] : nd[1]))
     .join('')
     .replace(/<rt>.*?<\/rt>/g, '')
+    .replace(/<span class="gen">.*?<\/span>/g, '') // 補った丸数字は原文に無いので比べない
     .replace(/<[^>]+>/g, '')
     .replace(/（図は省略）/g, '')
     .replace(/&lt;/g, '<')
