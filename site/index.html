@@ -8,17 +8,22 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="簡易六法">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" id="tc" content="#fbfaf4">
+<meta name="theme-color" id="tc" content="#fdfdfb">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
+<div id="top">
 <header id="hd">
   <button id="back" class="ib" aria-label="法令一覧へ"><svg viewBox="0 0 24 24"><path d="M15 4l-8 8 8 8"/></svg></button>
   <div id="ttl"><span id="lawname">簡易六法</span><span id="old" hidden>旧版</span><span id="cur"></span></div>
+  <button id="nav-back" class="ib" aria-label="前に見ていた条へ戻る" disabled><svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+  <button id="nav-fwd" class="ib" aria-label="戻る前の条へ進む" disabled><svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
   <button id="btn-set" class="ib" aria-label="表示設定"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
 </header>
+<div id="tabs" hidden></div>
+</div>
 
 <main id="home">
   <input id="filter" type="search" placeholder="法令名で絞り込み" autocomplete="off">
@@ -29,30 +34,27 @@
 <main id="law" hidden><article id="body" class="lawtext"></article></main>
 
 <div id="dock">
-<div id="tabs" hidden></div>
 <nav id="bar" hidden>
-  <button id="nav-back" disabled><svg viewBox="0 0 24 24"><path d="M15 4l-8 8 8 8"/></svg><span>戻る</span></button>
-  <button id="nav-fwd" disabled><svg viewBox="0 0 24 24"><path d="M9 4l8 8-8 8"/></svg><span>進む</span></button>
-  <button id="nav-toc"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>目次</span></button>
+  <button id="nav-toc"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.5" cy="6" r=".6"/><circle cx="4.5" cy="12" r=".6"/><circle cx="4.5" cy="18" r=".6"/></svg><span>目次</span></button>
+  <button id="nav-jump"><svg viewBox="0 0 24 24"><path d="M9 4L7 20M17 4l-2 16M4 9h16M3.5 15h16"/></svg><span>条文へ移動</span></button>
   <button id="nav-find"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg><span>検索</span></button>
-  <button id="nav-jump"><svg viewBox="0 0 24 24"><path d="M5 19c0-6 4-9 10-9M11 5l5 5-5 5"/></svg><span>条文番号</span></button>
 </nav>
 </div>
 
 <div id="scrim" hidden></div>
 
 <section id="sheet-jump" class="sheet" hidden>
-  <h2>条文番号を入力</h2>
+  <h2>条文へ移動</h2>
   <div id="jump-input"><span id="jump-val"></span><span id="jump-prev"></span></div>
   <div id="jump-hist"></div>
   <div id="pad">
     <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
-    <button id="pad-del" aria-label="1文字消す"><svg viewBox="0 0 24 24"><path d="M9 5h11v14H9l-6-7zM12 9.5l5 5M17 9.5l-5 5"/></svg></button>
     <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
     <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
-    <button id="pad-go">ジャンプ</button>
-    <button data-k="の" class="no">の</button><button data-k="0">0</button><span></span>
+    <button data-k="の" class="no">の</button><button data-k="0">0</button>
+    <button id="pad-del" aria-label="1文字消す"><svg viewBox="0 0 24 24"><path d="M9 5h11v14H9l-6-7zM12 9.5l5 5M17 9.5l-5 5"/></svg></button>
   </div>
+  <button id="pad-go">移動</button>
 </section>
 
 <section id="sheet-toc" class="sheet tall" hidden>

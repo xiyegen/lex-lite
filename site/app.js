@@ -231,6 +231,7 @@ const tabHash = (t) => t.id + (t.rev ? '@' + t.rev : '');
 function drawTabs() {
   const el = $('#tabs');
   el.hidden = !tabs.length;
+  document.body.classList.toggle('has-tabs', tabs.length > 0);
   el.innerHTML =
     tabs
       .map((t) => {
@@ -345,7 +346,7 @@ function setCur(n) {
 // 画面上端にかかっている条を二分探索で求める
 function track() {
   if (!cur || !arts.length) return;
-  const line = $('#hd').offsetHeight + 12;
+  const line = $('#top').offsetHeight + 12;
   let lo = 0;
   let hi = arts.length - 1;
   let hit = -1;
@@ -410,11 +411,10 @@ function drawJump() {
   $('#jump-prev').textContent = !val ? '' : n ? (n.includes(':') ? label(n) + '　削除' : capOf(n)) : '該当なし';
 }
 function drawHist() {
+  // 最近引いた条を、新しい順に横並びで出す
   const h = (store.get('hist', {})[cur.id] || []).filter((x) => cur.map.has(x.k));
-  $('#jump-hist').innerHTML = h.length
-    ? '<div class="lbl">履歴</div>' +
-      h.map((x) => `<button class="hrow" data-n="${x.k}"><span>${label(x.k)}</span><span class="c">${esc(capOf(x.k))}</span><span class="k">${x.c}</span></button>`).join('')
-    : '';
+  $('#jump-hist').innerHTML = h.map((x) => `<button class="chip" data-n="${x.k}">${label(x.k)}</button>`).join('');
+  $('#jump-hist').scrollLeft = 0;
 }
 function remember(n) {
   const all = store.get('hist', {});
@@ -449,7 +449,6 @@ $('#nav-jump').onclick = () => {
 $('#pad').onclick = (e) => {
   const b = e.target.closest('button');
   if (!b) return;
-  if (b.id === 'pad-go') return go();
   if (b.id === 'pad-del') val = val.slice(0, -1);
   else {
     const k = b.dataset.k;
@@ -460,8 +459,9 @@ $('#pad').onclick = (e) => {
   $('#jump-input').classList.remove('ng');
   drawJump();
 };
+$('#pad-go').onclick = go;
 $('#jump-hist').onclick = (e) => {
-  const b = e.target.closest('.hrow');
+  const b = e.target.closest('.chip');
   if (!b) return;
   remember(b.dataset.n);
   sheet(null);
@@ -579,7 +579,7 @@ function flashHit(n, h) {
   const els = hitEls(document.getElementById('a-' + n), h);
   if (!els.length) return;
   els.forEach((e) => e.classList.add('hit'));
-  const line = $('#hd').offsetHeight;
+  const line = $('#top').offsetHeight;
   const r = els[0].getBoundingClientRect();
   if (r.top > innerHeight * 0.6) scrollBy(0, r.top - line - 80);
   setTimeout(() => els.forEach((e) => e.classList.remove('hit')), 2600);
